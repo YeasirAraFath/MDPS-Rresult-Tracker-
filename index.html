@@ -829,48 +829,31 @@ async function flushPendingSync(){
 }
 
 /* ────────────────────────────────────
-   CORE GAS REQUEST  (JSONP — bypasses CORS)
-   GAS Web Apps block cross-origin fetch from
-   file:// or GitHub Pages. Solution: encode
-   everything in URL params and inject a <script>
-   tag (JSONP). GAS doGet returns callback(json).
+   CORE GAS REQUEST
+   Uses fetch() with no-cors for writes (fire-and-forget)
+   and fetch() with redirect:follow for reads.
+   GAS Web Apps support cross-origin GET with no headers.
 ──────────────────────────────────── */
-let _cbCounter = 0;
-
-function gasRequest(action, sheet, payload={}){
-  return new Promise((resolve, reject) => {
-    const cbName = '__gasCb' + (++_cbCounter);
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error('GAS request timed out'));
-    }, 15000);
-
-    function cleanup(){
-      clearTimeout(timeout);
-      delete window[cbName];
-      const el = document.getElementById('s_'+cbName);
-      if(el) el.remove();
-    }
-
-    window[cbName] = function(data){
-      cleanup();
-      if(data && data.error) reject(new Error(data.error));
-      else resolve(data);
-    };
-
-    const params = new URLSearchParams({
-      action,
-      sheet,
-      payload: JSON.stringify(payload),
-      callback: cbName
-    });
-
-    const script = document.createElement('script');
-    script.id  = 's_' + cbName;
-    script.src = GAS_URL + '?' + params.toString();
-    script.onerror = () => { cleanup(); reject(new Error('Network error')); };
-    document.head.appendChild(script);
+async function gasRequest(action, sheet, payload={}){
+  const params = new URLSearchParams({
+    action,
+    sheet,
+    payload: JSON.stringify(payload)
   });
+  const url = GAS_URL + '?' + params.toString();
+
+  // For read operations use standard fetch (GAS returns JSON for GET)
+  const res = await fetch(url, {
+    method: 'GET',
+    redirect: 'follow'
+  });
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  // Strip JSONP wrapper if present: callback({...}) → {...}
+  const clean = text.replace(/^[^(]+\(/, '').replace(/\)\s*;?\s*$/, '');
+  const data = JSON.parse(clean);
+  if(data && data.error) throw new Error(data.error);
+  return data;
 }
 
 /* ────────────────────────────────────
