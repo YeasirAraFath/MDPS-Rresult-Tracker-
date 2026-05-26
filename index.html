@@ -829,31 +829,49 @@ async function flushPendingSync(){
 }
 
 /* ────────────────────────────────────
-   CORE GAS REQUEST
-   Uses fetch() with no-cors for writes (fire-and-forget)
-   and fetch() with redirect:follow for reads.
-   GAS Web Apps support cross-origin GET with no headers.
+   CORE GAS REQUEST  (JSONP via <script> injection)
+   fetch() fails on GAS because Google redirects through
+   auth servers that strip CORS headers. JSONP via <script>
+   tags has no CORS restriction and works from any origin
+   including file:// and GitHub Pages.
 ──────────────────────────────────── */
-async function gasRequest(action, sheet, payload={}){
-  const params = new URLSearchParams({
-    action,
-    sheet,
-    payload: JSON.stringify(payload)
-  });
-  const url = GAS_URL + '?' + params.toString();
+let _cbIdx = 0;
 
-  // For read operations use standard fetch (GAS returns JSON for GET)
-  const res = await fetch(url, {
-    method: 'GET',
-    redirect: 'follow'
+function gasRequest(action, sheet, payload){
+  payload = payload || {};
+  return new Promise(function(resolve, reject){
+    var cbName = '_gasCb' + (++_cbIdx) + '_' + Date.now();
+    var timer = setTimeout(function(){
+      cleanup();
+      reject(new Error('GAS timeout'));
+    }, 20000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      try{ delete window[cbName]; }catch(e){}
+      var el = document.getElementById(cbName);
+      if(el) el.parentNode.removeChild(el);
+    }
+
+    window[cbName] = function(data){
+      cleanup();
+      if(data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    var params = 'action=' + encodeURIComponent(action)
+               + '&sheet=' + encodeURIComponent(sheet)
+               + '&payload=' + encodeURIComponent(JSON.stringify(payload))
+               + '&callback=' + encodeURIComponent(cbName)
+               + '&_t=' + Date.now();
+
+    var s = document.createElement('script');
+    s.id  = cbName;
+    s.type = 'text/javascript';
+    s.src  = GAS_URL + '?' + params;
+    s.onerror = function(){ cleanup(); reject(new Error('Script load failed — check GAS deployment')); };
+    document.head.appendChild(s);
   });
-  if(!res.ok) throw new Error('HTTP ' + res.status);
-  const text = await res.text();
-  // Strip JSONP wrapper if present: callback({...}) → {...}
-  const clean = text.replace(/^[^(]+\(/, '').replace(/\)\s*;?\s*$/, '');
-  const data = JSON.parse(clean);
-  if(data && data.error) throw new Error(data.error);
-  return data;
 }
 
 /* ────────────────────────────────────
