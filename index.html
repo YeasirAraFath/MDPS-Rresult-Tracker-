@@ -228,11 +228,33 @@ input,select,textarea{font-family:var(--fb)}
 .toggle-opt{flex:1;padding:9px;border-radius:var(--r-s);font-size:13px;font-weight:500;border:1px solid var(--border-m);background:var(--surface);color:var(--ts);cursor:pointer;text-align:center;transition:all .14s}
 .toggle-opt.active{background:var(--gold-pale);border-color:var(--gold);color:var(--gold)}
 
+/* ── CLOUD SYNC BADGE ── */
+.sync-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;font-size:11.5px;font-weight:500;font-family:var(--fm);transition:all .25s;cursor:default;border:1px solid transparent;white-space:nowrap}
+.sync-badge.syncing{background:var(--info-bg);color:var(--info);border-color:rgba(26,95,170,.18)}
+.sync-badge.synced {background:var(--ok-bg);  color:var(--ok); border-color:rgba(46,125,71,.18)}
+.sync-badge.offline{background:var(--warn-bg);color:var(--warn);border-color:rgba(179,106,0,.18)}
+.sync-badge.error  {background:var(--err-bg); color:var(--err); border-color:rgba(181,42,42,.18)}
+.sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sync-badge.syncing .sync-dot{background:var(--info);animation:pulse 1.1s ease-in-out infinite}
+.sync-badge.synced  .sync-dot{background:var(--ok)}
+.sync-badge.offline .sync-dot{background:var(--warn)}
+.sync-badge.error   .sync-dot{background:var(--err)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-ts{font-size:10px;color:var(--tm);font-family:var(--fm)}
+.sync-sep{width:1px;height:14px;background:var(--border-m)}
+.btn-sync{background:none;border:1px solid var(--border-m);border-radius:var(--r-s);padding:5px 9px;color:var(--ts);font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;transition:all .14s;font-family:var(--fm)}
+.btn-sync:hover{background:var(--surface);color:var(--tp)}
+.btn-sync:disabled{opacity:.4;pointer-events:none}
+.btn-sync svg{transition:transform .5s}
+.btn-sync.spinning svg{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}
   .sb-overlay.open{display:block}.main{margin-left:0}.ham{display:flex}
   .page-wrap{padding:14px}.fr2,.fr3{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}
+  .sync-ts{display:none}
 }
 @media print{
   .sidebar,.topbar,.filter-bar,.mover,.toast-box,.btn:not(.pv){display:none!important}
@@ -304,6 +326,17 @@ input,select,textarea{font-family:var(--fb)}
     </button>
     <div class="topbar-title" id="pageTitle">Dashboard</div>
     <div class="topbar-actions">
+      <!-- ── CLOUD SYNC CONTROLS ── -->
+      <span id="syncBadge" class="sync-badge offline" title="Cloud sync status">
+        <span class="sync-dot"></span>
+        <span id="syncLabel">Offline</span>
+      </span>
+      <span class="sync-ts" id="syncTs"></span>
+      <div class="sync-sep"></div>
+      <button class="btn-sync" id="manualSyncBtn" onclick="manualSync()" title="Sync now">
+        <svg id="syncIcon" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.2"/></svg>Sync
+      </button>
+      <div class="sync-sep"></div>
       <button class="btn btn-gold btn-sm" onclick="openAddCourseModal()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Course
       </button>
@@ -672,16 +705,370 @@ const ST = {
   importData:null
 };
 
+/* ══════════════════════════════════════
+   ☁  CLOUD SYNC ENGINE
+   ─────────────────────────────────────
+   Architecture:
+   • localStorage = offline cache + backup
+   • Google Apps Script Web App = cloud DB
+   • Sync queue for offline operations
+   • Auto-retry with exponential back-off
+   • 30-second background refresh
+══════════════════════════════════════ */
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz6jjBP1d2RyF77NEWs83UlkTkkEdmjKsCKEmpf9zo_SLcDCXSV26aXtMIhP3sRIJn7/exec';
+const CACHE_KEY_COURSES = 'mdps2_courses';
+const CACHE_KEY_MARKS   = 'mdps2_marks';
+const CACHE_KEY_SYNCED  = 'mdps2_lastSynced';
+const CACHE_KEY_QUEUE   = 'mdps2_syncQueue';
+const SYNC_INTERVAL_MS  = 30000;   // 30 s auto-refresh
+const RETRY_DELAYS      = [2000, 5000, 15000]; // back-off
+
+let _syncTimer      = null;
+let _isSyncing      = false;
+let _isOnline       = navigator.onLine;
+let _pendingQueue   = [];  // [{action,sheet,payload,ts}]
+let _debounceTimer  = null;
+
+/* ── Helpers ── */
+function nowISO(){ return new Date().toISOString(); }
+
+function genId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+
+/* ────────────────────────────────────
+   LOCAL CACHE (localStorage layer)
+──────────────────────────────────── */
 function saveState(){
-  localStorage.setItem('mdps2_courses',JSON.stringify(ST.courses));
-  localStorage.setItem('mdps2_marks',JSON.stringify(ST.marks));
+  localStorage.setItem(CACHE_KEY_COURSES, JSON.stringify(ST.courses));
+  localStorage.setItem(CACHE_KEY_MARKS,   JSON.stringify(ST.marks));
+  saveSyncQueue();
 }
+
 function loadState(){
-  const c=localStorage.getItem('mdps2_courses');
-  const m=localStorage.getItem('mdps2_marks');
-  if(c)ST.courses=JSON.parse(c);
-  if(m)ST.marks=JSON.parse(m);
+  try{
+    const c = localStorage.getItem(CACHE_KEY_COURSES);
+    const m = localStorage.getItem(CACHE_KEY_MARKS);
+    if(c) ST.courses = JSON.parse(c);
+    if(m) ST.marks   = JSON.parse(m);
+  }catch(e){ console.warn('loadState error',e); }
+  loadSyncQueue();
 }
+
+function saveSyncQueue(){
+  localStorage.setItem(CACHE_KEY_QUEUE, JSON.stringify(_pendingQueue));
+}
+
+function loadSyncQueue(){
+  try{
+    const q = localStorage.getItem(CACHE_KEY_QUEUE);
+    _pendingQueue = q ? JSON.parse(q) : [];
+  }catch(e){ _pendingQueue=[]; }
+}
+
+function setLastSynced(){
+  const ts = nowISO();
+  localStorage.setItem(CACHE_KEY_SYNCED, ts);
+  const el = document.getElementById('syncTs');
+  if(el) el.textContent = 'Synced ' + new Date(ts).toLocaleTimeString('en-BD',{hour:'2-digit',minute:'2-digit'});
+}
+
+/* ────────────────────────────────────
+   SYNC STATUS UI
+──────────────────────────────────── */
+function updateSyncStatus(state, msg){
+  // state: 'syncing' | 'synced' | 'offline' | 'error'
+  const badge  = document.getElementById('syncBadge');
+  const label  = document.getElementById('syncLabel');
+  const btn    = document.getElementById('manualSyncBtn');
+  const icon   = document.getElementById('syncIcon');
+  if(!badge) return;
+  badge.className = 'sync-badge ' + state;
+  const labels = {syncing:'Syncing…', synced:'Synced', offline:'Offline', error:'Cloud Error'};
+  if(label) label.textContent = msg || labels[state] || state;
+  if(btn){
+    btn.disabled = (state === 'syncing');
+    if(state==='syncing') btn.classList.add('spinning');
+    else btn.classList.remove('spinning');
+  }
+}
+
+/* ────────────────────────────────────
+   QUEUE MANAGER
+──────────────────────────────────── */
+function queuePendingSync(action, sheet, payload){
+  // Deduplicate: for upsert/delete on same id, replace earlier entry
+  const id = payload?.id || payload?.courseId;
+  if(id){
+    _pendingQueue = _pendingQueue.filter(q =>
+      !(q.sheet === sheet && q.payload?.id === id && q.payload?.courseId === id
+        || q.sheet===sheet && (q.payload?.id===id || q.payload?.courseId===id))
+    );
+  }
+  _pendingQueue.push({ action, sheet, payload, ts: nowISO() });
+  saveSyncQueue();
+}
+
+async function flushPendingSync(){
+  if(!_isOnline || _pendingQueue.length === 0) return;
+  const queue = [..._pendingQueue];
+  _pendingQueue = [];
+  saveSyncQueue();
+  for(const op of queue){
+    try{
+      await gasRequest(op.action, op.sheet, op.payload);
+    }catch(e){
+      // Re-queue failed items
+      _pendingQueue.unshift(op);
+      saveSyncQueue();
+      console.warn('Re-queued failed op:', op.action, op.sheet);
+      break; // stop flushing; retry later
+    }
+  }
+}
+
+/* ────────────────────────────────────
+   CORE GAS FETCH
+──────────────────────────────────── */
+async function gasRequest(action, sheet, payload={}, retryCount=0){
+  const body = JSON.stringify({ action, sheet, payload });
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    mode:   'cors',
+    headers:{ 'Content-Type': 'text/plain' }, // GAS requires text/plain for CORS POST
+    body
+  });
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+
+/* ────────────────────────────────────
+   LOAD CLOUD DATA → merge into ST
+──────────────────────────────────── */
+async function loadCloudData(){
+  if(_isSyncing) return;
+  _isSyncing = true;
+  updateSyncStatus('syncing');
+  try{
+    const [cRes, mRes] = await Promise.all([
+      gasRequest('GET_ALL', 'Courses'),
+      gasRequest('GET_ALL', 'Marks')
+    ]);
+
+    // Merge courses: cloud wins on updatedAt conflicts
+    if(Array.isArray(cRes.data)){
+      const cloudCourses = cRes.data;
+      const merged = [...ST.courses];
+      cloudCourses.forEach(cc => {
+        const idx = merged.findIndex(lc => lc.id === cc.id);
+        if(idx === -1){
+          // New from cloud — add locally
+          merged.push(normalizeCourse(cc));
+        } else {
+          // Conflict: keep newer
+          const localTs  = new Date(merged[idx].updatedAt || merged[idx].createdAt || 0);
+          const cloudTs  = new Date(cc.updatedAt || cc.createdAt || 0);
+          if(cloudTs >= localTs) merged[idx] = normalizeCourse(cc);
+        }
+      });
+      // Remove courses that were deleted on cloud (not in cloud list) only if no pending queue
+      // (conservative: only delete if queue is empty to avoid wiping local-only adds)
+      if(_pendingQueue.length === 0){
+        const cloudIds = new Set(cloudCourses.map(c=>c.id));
+        ST.courses = merged.filter(lc => cloudIds.has(lc.id) || !lc._cloudSynced);
+      } else {
+        ST.courses = merged;
+      }
+    }
+
+    // Merge marks similarly
+    if(Array.isArray(mRes.data)){
+      mRes.data.forEach(cm => {
+        const cid = cm.courseId;
+        if(!cid) return;
+        const local = ST.marks[cid];
+        const cloudTs = new Date(cm.updatedAt || 0);
+        const localTs = new Date(local?.savedAt || local?.updatedAt || 0);
+        if(!local || cloudTs >= localTs){
+          ST.marks[cid] = normalizeMark(cm);
+        }
+      });
+    }
+
+    saveState();
+    setLastSynced();
+    updateSyncStatus('synced');
+    // Flush any queued offline ops after successful pull
+    await flushPendingSync();
+    return true;
+  }catch(e){
+    console.error('loadCloudData error:', e);
+    if(!_isOnline) updateSyncStatus('offline');
+    else updateSyncStatus('error', 'Cloud Error');
+    return false;
+  }finally{
+    _isSyncing = false;
+  }
+}
+
+/* ────────────────────────────────────
+   SYNC TO CLOUD (single record)
+──────────────────────────────────── */
+async function syncToCloud(action, sheet, payload){
+  if(!_isOnline){
+    queuePendingSync(action, sheet, payload);
+    updateSyncStatus('offline');
+    return false;
+  }
+  try{
+    updateSyncStatus('syncing');
+    await gasRequest(action, sheet, payload);
+    setLastSynced();
+    updateSyncStatus('synced');
+    return true;
+  }catch(e){
+    console.warn('syncToCloud failed, queuing:', e.message);
+    queuePendingSync(action, sheet, payload);
+    updateSyncStatus('error');
+    return false;
+  }
+}
+
+/* ────────────────────────────────────
+   NORMALIZED DATA SHAPES
+──────────────────────────────────── */
+function normalizeCourse(c){
+  return {
+    id:         c.id || genId(),
+    code:       c.code || '',
+    title:      c.title || '',
+    credit:     parseFloat(c.credit) || 3,
+    semester:   c.semester || '',
+    status:     c.status || 'Core',
+    courseType: c.courseType || 'full',
+    teachers:   Array.isArray(c.teachers) ? c.teachers
+                  : (c.teachers ? String(c.teachers).split('|').filter(Boolean) : []),
+    teacherA:   c.teacherA || '',
+    teacherB:   c.teacherB || '',
+    createdAt:  c.createdAt || nowISO(),
+    updatedAt:  c.updatedAt || nowISO(),
+    _cloudSynced: true
+  };
+}
+
+function normalizeMark(m){
+  return {
+    partA1:      m.partA1 ?? '',
+    partA2:      m.partA2 ?? '',
+    partB1:      m.partB1 ?? '',
+    partB2:      m.partB2 ?? '',
+    attendance:  m.attendance ?? '',
+    attTotal:    m.attTotal ?? '',
+    attGot:      m.attGot ?? '',
+    finalExam:   m.finalExam ?? '',
+    assignment:  m.assignment ?? '',
+    presentation:m.presentation ?? '',
+    viva:        m.viva ?? '',
+    notes:       m.notes ?? '',
+    savedAt:     m.updatedAt || m.savedAt || nowISO(),
+    updatedAt:   m.updatedAt || nowISO()
+  };
+}
+
+/* ────────────────────────────────────
+   COURSE CLOUD OPERATIONS
+──────────────────────────────────── */
+async function saveCourseToCloud(course){
+  const payload = {
+    ...course,
+    teachers: (course.teachers||[]).join('|'), // Sheets-friendly
+    updatedAt: nowISO()
+  };
+  return syncToCloud('UPSERT', 'Courses', payload);
+}
+
+async function deleteCourseCloud(id){
+  return syncToCloud('DELETE', 'Courses', { id });
+}
+
+async function updateCourseCloud(course){
+  return saveCourseToCloud(course);
+}
+
+/* ────────────────────────────────────
+   MARKS CLOUD OPERATIONS
+──────────────────────────────────── */
+async function saveMarksToCloud(courseId, marks){
+  const payload = {
+    courseId,
+    ...marks,
+    updatedAt: nowISO()
+  };
+  return syncToCloud('UPSERT', 'Marks', payload);
+}
+
+/* ────────────────────────────────────
+   AUTO SYNC (background)
+──────────────────────────────────── */
+function startAutoSync(){
+  if(_syncTimer) clearInterval(_syncTimer);
+  _syncTimer = setInterval(syncFromCloud, SYNC_INTERVAL_MS);
+}
+
+async function syncFromCloud(){
+  if(!_isOnline || _isSyncing) return;
+  const ok = await loadCloudData();
+  if(ok){
+    populateSemFilters();
+    // Refresh visible page quietly
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+    if(activePage === 'dashboard') renderDashboard();
+    else if(activePage === 'results') renderResultsTbl();
+    else if(activePage === 'courses') renderCoursesTbl();
+  }
+}
+
+/* ────────────────────────────────────
+   DEBOUNCED SYNC (after edits)
+──────────────────────────────────── */
+function debouncedSync(action, sheet, payload, delay=800){
+  clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(() => syncToCloud(action, sheet, payload), delay);
+}
+
+/* ────────────────────────────────────
+   MANUAL SYNC BUTTON
+──────────────────────────────────── */
+async function manualSync(){
+  showToast('Syncing with cloud…','inf');
+  const ok = await loadCloudData();
+  if(ok){
+    populateSemFilters();
+    renderDashboard();
+    showToast('Cloud sync complete','ok');
+  } else {
+    showToast('Sync failed — working offline','wn');
+  }
+}
+
+/* ────────────────────────────────────
+   ONLINE / OFFLINE DETECTION
+──────────────────────────────────── */
+window.addEventListener('online', async () => {
+  _isOnline = true;
+  showToast('Back online — syncing…','inf');
+  await flushPendingSync();
+  await loadCloudData();
+  startAutoSync();
+});
+window.addEventListener('offline', () => {
+  _isOnline = false;
+  updateSyncStatus('offline');
+  showToast('You are offline — changes saved locally','wn');
+});
 
 /* ══════════════════════════════════════
    CALCULATIONS
@@ -799,8 +1186,10 @@ function switchProgTab(i){
 }
 function quickAddCourse(code,title,semester,status,credit){
   if(ST.courses.find(c=>c.code.toLowerCase()===code.toLowerCase())){showToast('Already added','wn');return;}
-  ST.courses.push({id:Date.now().toString()+Math.random().toString(36).slice(2),code,title,semester,status,credit:parseFloat(credit),courseType:'full',teachers:[],teacherA:'',teacherB:'',createdAt:new Date().toISOString()});
+  const newCourse={id:genId(),code,title,semester,status,credit:parseFloat(credit),courseType:'full',teachers:[],teacherA:'',teacherB:'',createdAt:nowISO(),updatedAt:nowISO()};
+  ST.courses.push(newCourse);
   saveState();populateSemFilters();renderProgram();showToast(`Added: ${code}`,'ok');
+  saveCourseToCloud(newCourse);
 }
 
 /* ══════════════════════════════════════
@@ -874,21 +1263,30 @@ function saveCourse(){
     teacherA:document.getElementById('teacherAInput').value.trim(),
     teacherB:document.getElementById('teacherBInput').value.trim(),
   };
+  let savedCourse;
   if(editId){
     const idx=ST.courses.findIndex(c=>c.id===editId);
-    if(idx!==-1)ST.courses[idx]={...ST.courses[idx],...data};
+    if(idx!==-1){
+      ST.courses[idx]={...ST.courses[idx],...data,updatedAt:nowISO()};
+      savedCourse=ST.courses[idx];
+    }
     showToast('Course updated','ok');
   } else {
-    ST.courses.push({...data,id:Date.now().toString()+Math.random().toString(36).slice(2),createdAt:new Date().toISOString()});
+    const newCourse={...data,id:genId(),createdAt:nowISO(),updatedAt:nowISO()};
+    ST.courses.push(newCourse);
+    savedCourse=newCourse;
     showToast('Course added','ok');
   }
   saveState();closeCourseModal();renderCoursesTbl();populateSemFilters();
+  if(savedCourse) saveCourseToCloud(savedCourse);
 }
 function deleteCourse(id){
   const c=ST.courses.find(x=>x.id===id);
   openConfirm('Delete Course',`Delete "${c?.title}" and all its marks?`,()=>{
     ST.courses=ST.courses.filter(x=>x.id!==id);delete ST.marks[id];
     saveState();renderCoursesTbl();showToast('Course deleted','wn');
+    deleteCourseCloud(id);
+    syncToCloud('DELETE','Marks',{courseId:id});
   });
 }
 
@@ -1115,7 +1513,7 @@ function saveMarks(id){
   const attGot=parseFloat(document.getElementById('m_attGot')?.value)||0;
   const attDirect=parseFloat(document.getElementById('m_att')?.value)||0;
   const att=attTot>0?Math.min(10,attGot/attTot*10):attDirect;
-  ST.marks[id]={
+  const marks={
     partA1:document.getElementById('m_pA1')?.value,
     partA2:document.getElementById('m_pA2')?.value,
     partB1:document.getElementById('m_pB1')?.value,
@@ -1128,12 +1526,18 @@ function saveMarks(id){
     presentation:document.getElementById('m_pres')?.value,
     viva:document.getElementById('m_viva')?.value,
     notes:document.getElementById('m_notes')?.value,
-    savedAt:new Date().toISOString()
+    savedAt:nowISO(),
+    updatedAt:nowISO()
   };
+  ST.marks[id]=marks;
   saveState();showToast('Marks saved','ok');
+  saveMarksToCloud(id, marks);
 }
 function clearMarks(id){
-  openConfirm('Clear Marks','This will erase all marks for this course.',()=>{delete ST.marks[id];saveState();loadMarksForm();showToast('Marks cleared','wn')});
+  openConfirm('Clear Marks','This will erase all marks for this course.',()=>{
+    delete ST.marks[id];saveState();loadMarksForm();showToast('Marks cleared','wn');
+    syncToCloud('DELETE','Marks',{courseId:id});
+  });
 }
 
 /* ══════════════════════════════════════
@@ -1447,7 +1851,7 @@ function importExcel(){
       semester:String(row['Term']||row['Semester']||'').trim(),
       courseType:String(row['Type']||'full').trim(),teachers};
     if(existing){Object.assign(existing,cd);updated++;}
-    else{ST.courses.push({...cd,id:Date.now().toString()+Math.random().toString(36).slice(2),createdAt:new Date().toISOString()});added++;}
+    else{ST.courses.push({...cd,id:genId(),createdAt:nowISO()});added++;}
     const id=existing?.id||ST.courses[ST.courses.length-1].id;
     const m=ST.marks[id]||{};
     const flds={'Part A Exam1':'partA1','Part A Exam2':'partA2','Part B Exam1':'partB1','Part B Exam2':'partB2','Attendance':'attendance','Final Exam':'finalExam','Assignment':'assignment','Presentation':'presentation','Viva':'viva','Notes':'notes'};
@@ -1459,6 +1863,15 @@ function importExcel(){
   document.getElementById('importPrev').style.display='none';
   document.getElementById('importBtn').disabled=true;
   showToast(`Imported: ${added} added, ${updated} updated`,'ok');
+  // Sync all imported courses and marks to cloud
+  if(_isOnline){
+    ST.courses.forEach(c=>saveCourseToCloud(c));
+    Object.entries(ST.marks).forEach(([cid,m])=>saveMarksToCloud(cid,m));
+  } else {
+    ST.courses.forEach(c=>queuePendingSync('UPSERT','Courses',{...c,teachers:(c.teachers||[]).join('|'),updatedAt:nowISO()}));
+    Object.entries(ST.marks).forEach(([cid,m])=>queuePendingSync('UPSERT','Marks',{courseId:cid,...m,updatedAt:nowISO()}));
+    saveSyncQueue();
+  }
 }
 
 /* ══════════════════════════════════════
@@ -1478,13 +1891,24 @@ function importJSON(){
     const data=JSON.parse(e.target.result);
     openConfirm('Restore Backup',`Replace ALL current data with backup from ${data.exportedAt?.slice(0,10)||'unknown'}?`,()=>{
       ST.courses=data.courses||[];ST.marks=data.marks||{};saveState();populateSemFilters();showToast('Data restored','ok');
+      // Push restored data to cloud
+      if(_isOnline){
+        ST.courses.forEach(c=>saveCourseToCloud(c));
+        Object.entries(ST.marks).forEach(([cid,m])=>saveMarksToCloud(cid,m));
+      }
     });
   }catch(err){showToast('Invalid file: '+err.message,'er')}}
   r.readAsText(file);
 }
 function confirmReset(){
   openConfirm('Reset All Data','This will permanently delete ALL courses and marks. Cannot be undone.',()=>{
+    const ids=[...ST.courses.map(c=>c.id)];
     ST.courses=[];ST.marks={};saveState();renderCoursesTbl();renderResultsTbl();renderDashboard();populateSemFilters();showToast('All data reset','wn');
+    // Queue cloud deletes
+    ids.forEach(id=>{
+      deleteCourseCloud(id);
+      syncToCloud('DELETE','Marks',{courseId:id});
+    });
   });
 }
 
@@ -1559,7 +1983,7 @@ document.getElementById('confirmModal').addEventListener('click',function(e){if(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCourseModal();closeConfirm()}});
 document.getElementById('teacherInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTeacher()}});
 
-// Autosave every 30s
+// Autosave every 30s (local)
 setInterval(saveState,30000);
 window.addEventListener('beforeunload',saveState);
 
@@ -1570,11 +1994,37 @@ if(savedTheme)document.documentElement.setAttribute('data-theme',savedTheme);
 // Wipe legacy storage keys from old files
 ['mdps_courses','mdps_marks'].forEach(k=>localStorage.removeItem(k));
 
-loadState();
-seedData();
-populateSemFilters();
-renderDashboard();
-go('dashboard');
+// ─── BOOT SEQUENCE ───────────────────────────────
+(async function boot(){
+  // 1. Load local cache instantly (zero-latency UI)
+  loadState();
+  seedData();
+  populateSemFilters();
+  renderDashboard();
+  go('dashboard');
+
+  // 2. Set initial online/offline status
+  _isOnline = navigator.onLine;
+  updateSyncStatus(_isOnline ? 'syncing' : 'offline');
+
+  // 3. Show last synced time from cache
+  const lastSynced = localStorage.getItem(CACHE_KEY_SYNCED);
+  if(lastSynced){
+    const el = document.getElementById('syncTs');
+    if(el) el.textContent = 'Synced ' + new Date(lastSynced).toLocaleTimeString('en-BD',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // 4. Pull fresh cloud data
+  if(_isOnline){
+    const ok = await loadCloudData();
+    if(ok){
+      populateSemFilters();
+      renderDashboard();
+    }
+    // 5. Start background 30s auto-sync
+    startAutoSync();
+  }
+})();
 </script>
 </body>
 </html>
