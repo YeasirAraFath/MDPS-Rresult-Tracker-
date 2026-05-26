@@ -529,6 +529,13 @@ input,select,textarea{font-family:var(--fb)}
           <button class="btn btn-primary" onclick="importJSON()" style="width:100%;">Restore Backup</button>
         </div>
       </div>
+      <div class="card" style="margin-top:16px;border-color:rgba(26,95,170,.25);">
+        <div class="card-hd"><div><div class="card-title" style="color:var(--info);">☁ Cloud Sync</div><div class="card-sub">Force push all local data to Google Sheets</div></div></div>
+        <p style="font-size:13px;color:var(--ts);margin-bottom:14px;">Use this if your Google Sheet is empty or missing data. This will upload all courses and marks from this device to the cloud.</p>
+        <button class="btn btn-primary" onclick="pushAllToCloud().then(()=>showToast('Done! Check your Google Sheet','ok'))" style="width:100%;">
+          ☁ Push All Data to Google Sheet
+        </button>
+      </div>
       <div class="card" style="margin-top:16px;border-color:rgba(181,42,42,.25);">
         <div class="card-hd"><div><div class="card-title" style="color:var(--err);">Danger Zone</div><div class="card-sub">Irreversible</div></div></div>
         <button class="btn btn-danger" onclick="confirmReset()">Reset All Data</button>
@@ -840,7 +847,7 @@ let _cbIdx = 0;
 function gasRequest(action, sheet, payload){
   payload = payload || {};
   return new Promise(function(resolve, reject){
-    var cbName = '_gasCb' + (++_cbIdx) + '_' + Date.now();
+    var cbName = 'gasCb' + (++_cbIdx);
     var timer = setTimeout(function(){
       cleanup();
       reject(new Error('GAS timeout'));
@@ -872,6 +879,42 @@ function gasRequest(action, sheet, payload){
     s.onerror = function(){ cleanup(); reject(new Error('Script load failed — check GAS deployment')); };
     document.head.appendChild(s);
   });
+}
+
+/* ────────────────────────────────────
+   PUSH ALL LOCAL DATA TO CLOUD
+   Called on first sync to upload seed/local data
+──────────────────────────────────── */
+async function pushAllToCloud(){
+  for(const c of ST.courses){
+    try{
+      await gasRequest('UPSERT','Courses',{
+        id:c.id, code:c.code, title:c.title, credit:String(c.credit||3),
+        semester:c.semester||'', status:c.status||'Core',
+        courseType:c.courseType||'full',
+        teachers:(c.teachers||[]).join('|'),
+        teacherA:c.teacherA||'', teacherB:c.teacherB||'',
+        createdAt:c.createdAt||nowISO(), updatedAt:nowISO()
+      });
+    }catch(e){ console.warn('push course failed',c.id,e.message); }
+  }
+  for(const [cid,m] of Object.entries(ST.marks)){
+    try{
+      await gasRequest('UPSERT','Marks',{
+        courseId:cid,
+        partA1:m.partA1||'', partA2:m.partA2||'',
+        partB1:m.partB1||'', partB2:m.partB2||'',
+        attendance:m.attendance||'', attTotal:m.attTotal||'',
+        attGot:m.attGot||'', finalExam:m.finalExam||'',
+        assignment:m.assignment||'', presentation:m.presentation||'',
+        viva:m.viva||'', notes:m.notes||'',
+        createdAt:m.savedAt||nowISO(), updatedAt:nowISO()
+      });
+    }catch(e){ console.warn('push marks failed',cid,e.message); }
+  }
+  setLastSynced();
+  updateSyncStatus('synced');
+  showToast('All data pushed to cloud','ok');
 }
 
 /* ────────────────────────────────────
