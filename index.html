@@ -1977,10 +1977,10 @@ function showToast(msg,type='inf'){
 function seedData(){
   if(ST.courses.length>0)return;
   ST.courses=[
-    {id:'c001',code:'Econ 5121',title:'Principles of Economics',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Tasnim Murad Mamun','Kaniz Fatima Mohsin'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c002',code:'AT 5179',title:'Agricultural Policy and Rural Development',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Faijan Bin Halim','Dr. Nishad Nasrin'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c003',code:'Demo 5177',title:'Population Policy and Gender Studies',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Md. Torikul Islam'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c004',code:'DS 5171',title:'Development Theories and Policies',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Md. Mehedi Hasan'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()}
+    {id:'c001',code:'Econ 5121',title:'Principles of Economics',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Dr. Nishad Nasrin'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
+    {id:'c002',code:'AT 5179',title:'Agricultural Policy and Rural Development',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Tasnim Murad Mamun','Md. Torikul Islam'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
+    {id:'c003',code:'Demo 5177',title:'Population Policy and Gender Studies',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Kaniz Fatima Mohsin','Md. Mehedi Hasan'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
+    {id:'c004',code:'DS 5171',title:'Development Theories and Policies',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Faijan Bin Halim'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()}
   ];
   ST.marks={};saveState();
 }
