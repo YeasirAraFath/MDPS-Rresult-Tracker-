@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MDPS Result Manager — Khulna University</title>
+<meta name="description" content="Academic result management dashboard for MDPS students at Khulna University">
+<meta name="theme-color" content="#1a3260">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -50,6 +52,10 @@ input,select,textarea{font-family:var(--fb)}
 /* ── SIDEBAR ── */
 .sidebar{width:256px;background:var(--navy-mid);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s,background .3s}
 [data-theme="dark"] .sidebar{background:#0e1220}
+[data-theme="dark"] .btn-outline{border-color:rgba(180,200,230,.25);color:var(--ts)}
+[data-theme="dark"] .btn-outline:hover{background:rgba(180,200,230,.08)}
+[data-theme="dark"] .fc{background:var(--surface);color:var(--tp);border-color:rgba(180,200,230,.2)}
+[data-theme="dark"] .fc:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,151,58,.12)}
 .sb-brand{padding:22px 18px 18px;border-bottom:1px solid rgba(255,255,255,.1)}
 .sb-brand .name{font-family:var(--fd);font-size:19px;color:#fff;letter-spacing:-.3px}
 .sb-brand .sub{font-size:10.5px;color:var(--gold-l);margin-top:2px;font-family:var(--fm);letter-spacing:.5px;text-transform:uppercase}
@@ -72,10 +78,10 @@ input,select,textarea{font-family:var(--fb)}
 /* ── MAIN ── */
 .main{margin-left:256px;flex:1;display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 26px;height:58px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50;transition:background .3s}
-.topbar-title{font-family:var(--fd);font-size:16px;font-weight:600;flex:1}
+.topbar-title{font-family:var(--fd);font-size:16px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .topbar-actions{display:flex;align-items:center;gap:8px}
 .page-wrap{padding:26px;flex:1}
-.page{display:none}.page.active{display:block}
+.page{display:none;animation:fadeIn .2s ease}.page.active{display:block}
 
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:8px 15px;border-radius:var(--r-s);font-size:13px;font-weight:500;border:1px solid transparent;transition:all .15s;white-space:nowrap;line-height:1}
@@ -139,7 +145,7 @@ input,select,textarea{font-family:var(--fb)}
 .dtbl tbody tr:last-child{border-bottom:none}
 .dtbl tbody tr:hover{background:var(--gold-pale)}
 [data-theme="dark"] .dtbl tbody tr:hover{background:rgba(201,151,58,.07)}
-.dtbl td{padding:10px 13px;vertical-align:middle}
+.dtbl td{padding:10px 13px;vertical-align:middle;word-break:break-word}
 .dtbl tfoot td{background:var(--surface);font-weight:600;padding:9px 13px;border-top:2px solid var(--border-m);font-family:var(--fm);font-size:12px}
 .mono{font-family:var(--fm)}
 
@@ -174,6 +180,7 @@ input,select,textarea{font-family:var(--fb)}
 .toast.ok{border-left:3px solid #4ebd7a}.toast.er{border-left:3px solid #f08080}
 .toast.wn{border-left:3px solid var(--gold)}.toast.inf{border-left:3px solid #6ab0f0}
 @keyframes tin{from{opacity:0;transform:translateX(36px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* ── PAGINATION ── */
 .pag{display:flex;align-items:center;gap:4px;margin-top:12px;justify-content:flex-end}
@@ -215,8 +222,8 @@ input,select,textarea{font-family:var(--fb)}
 .pred-row.no{background:var(--err-bg);border-color:rgba(181,42,42,.15)}
 
 /* ── MISC ── */
-.empty{text-align:center;padding:54px 20px;color:var(--tm)}
-.empty svg{opacity:.22;margin-bottom:12px;display:block;margin-inline:auto}
+.empty{text-align:center;padding:54px 20px;color:var(--tm);animation:fadeIn .3s ease}
+.empty svg{opacity:.22;margin-bottom:12px;display:block;margin-inline:auto;stroke:currentColor}
 .empty h3{font-size:14px;color:var(--ts);margin-bottom:5px}
 .filter-bar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .srch-wrap{position:relative;flex:1;min-width:180px}
@@ -255,11 +262,14 @@ input,select,textarea{font-family:var(--fb)}
   .page-wrap{padding:14px}.fr2,.fr3{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}
   .sync-ts{display:none}
+  .topbar-actions .btn-outline{display:none}
+  .sync-sep:last-of-type{display:none}
 }
 @media print{
   .sidebar,.topbar,.filter-bar,.mover,.toast-box,.btn:not(.pv){display:none!important}
   .main{margin-left:0}.page-wrap{padding:0}
   body{background:#fff;color:#000}.card,.tbl-wrap{border:1px solid #ccc}
+  .sync-badge,.sync-ts,.btn-sync,.sync-sep{display:none!important}
 }
 </style>
 </head>
@@ -275,7 +285,7 @@ input,select,textarea{font-family:var(--fb)}
   </div>
   <nav class="sb-nav">
     <div class="sb-sec">Overview</div>
-    <div class="nav-item active" onclick="go('dashboard')">
+    <div class="nav-item active" onclick="go('dashboard')" tabindex="0" onkeydown="if(event.key==='Enter')go('dashboard')">
       <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Dashboard
     </div>
@@ -313,7 +323,7 @@ input,select,textarea{font-family:var(--fb)}
   <div class="sb-foot">
     <div class="av">YA</div>
     <div class="av-info"><div class="n">Yeasir Arafath</div><div class="r">MDPS · 2024-25</div></div>
-    <div class="dark-tog" id="darkTog" onclick="toggleTheme()"></div>
+    <div class="dark-tog" id="darkTog" onclick="toggleTheme()" role="button" aria-label="Toggle dark mode" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')toggleTheme()"></div>
   </div>
 </aside>
 <div class="sb-overlay" id="sbOverlay" onclick="closeSb()"></div>
@@ -359,7 +369,7 @@ input,select,textarea{font-family:var(--fb)}
         </div>
         <div class="chart-card">
           <div style="font-size:13.5px;font-weight:600;margin-bottom:12px;">Marks Breakdown</div>
-          <canvas id="brkChart"></canvas>
+          <canvas id="brkChart" style="max-height:240px;"></canvas>
         </div>
       </div>
       <div class="chart-card" style="margin-top:18px;">
@@ -519,12 +529,12 @@ input,select,textarea{font-family:var(--fb)}
     <div class="page" id="page-backup">
       <div class="fr2">
         <div class="card">
-          <div class="card-hd"><div class="card-title">Export JSON Backup</div></div>
+          <div class="card-hd"><div><div class="card-title">Export JSON Backup</div><div class="card-sub">Download all data as JSON</div></div></div>
           <p style="font-size:13px;color:var(--ts);margin-bottom:14px;">Export all data as JSON for safekeeping.</p>
           <button class="btn btn-primary" onclick="exportJSON()" style="width:100%;">Download Backup (.json)</button>
         </div>
         <div class="card">
-          <div class="card-hd"><div class="card-title">Restore from Backup</div></div>
+          <div class="card-hd"><div><div class="card-title">Restore from Backup</div><div class="card-sub">Import a previously saved JSON</div></div></div>
           <div class="fg"><input type="file" class="fc" id="restoreFile" accept=".json"></div>
           <button class="btn btn-primary" onclick="importJSON()" style="width:100%;">Restore Backup</button>
         </div>
@@ -532,7 +542,7 @@ input,select,textarea{font-family:var(--fb)}
       <div class="card" style="margin-top:16px;border-color:rgba(26,95,170,.25);">
         <div class="card-hd"><div><div class="card-title" style="color:var(--info);">☁ Cloud Sync</div><div class="card-sub">Force push all local data to Google Sheets</div></div></div>
         <p style="font-size:13px;color:var(--ts);margin-bottom:14px;">Use this if your Google Sheet is empty or missing data. This will upload all courses and marks from this device to the cloud.</p>
-        <button class="btn btn-primary" onclick="pushAllToCloud().then(()=>showToast('Done! Check your Google Sheet','ok'))" style="width:100%;">
+        <button class="btn btn-primary" id="pushCloudBtn" onclick="handlePushAll()" style="width:100%;">
           ☁ Push All Data to Google Sheet
         </button>
       </div>
@@ -696,7 +706,10 @@ const GRADES = [
   {min:0, g:'F',  gpa:0.00}
 ];
 function gradeInfo(t){for(const g of GRADES)if(t>=g.min)return g;return{g:'F',gpa:0}}
-function gbClass(g){return 'gb g'+g.replace('+','A-plus').replace('-','A-minus').replace(' ','')}
+function gbClass(g){
+  var map={'A+':'gA-plus','A':'gA','A-':'gA-minus','B+':'gB-plus','B':'gB','B-':'gB-minus','C+':'gC-plus','C':'gC','D':'gD','F':'gF'};
+  return 'gb '+(map[g]||'gF');
+}
 
 /* ══════════════════════════════════════
    STATE
@@ -885,6 +898,18 @@ function gasRequest(action, sheet, payload){
    PUSH ALL LOCAL DATA TO CLOUD
    Called on first sync to upload seed/local data
 ──────────────────────────────────── */
+async function handlePushAll(){
+  const btn=document.getElementById('pushCloudBtn');
+  if(btn){btn.disabled=true;btn.textContent='Pushing...'}
+  try{
+    await pushAllToCloud();
+    showToast('Done! Check your Google Sheet','ok');
+  }catch(e){
+    showToast('Push failed: '+e.message,'er');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='☁ Push All Data to Google Sheet'}
+  }
+}
 async function pushAllToCloud(){
   for(const c of ST.courses){
     try{
@@ -1097,9 +1122,11 @@ async function syncFromCloud(){
     populateSemFilters();
     // Refresh visible page quietly
     const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
-    if(activePage === 'dashboard') renderDashboard();
-    else if(activePage === 'results') renderResultsTbl();
-    else if(activePage === 'courses') renderCoursesTbl();
+    if(activePage==='dashboard') renderDashboard();
+    else if(activePage==='results'){ renderResultsTbl(); }
+    else if(activePage==='courses'){ renderCoursesTbl(); }
+    else if(activePage==='marks'){ populateMarksPicker(); }
+    else if(activePage==='predict'){ populatePredictPicker(); }
   }
 }
 
@@ -1200,9 +1227,9 @@ function go(id){
   closeSb();
   if(id==='dashboard')renderDashboard();
   if(id==='program')renderProgram();
-  if(id==='courses')renderCoursesTbl();
+  if(id==='courses'){renderCoursesTbl();populateSemFilters();}
   if(id==='marks')populateMarksPicker();
-  if(id==='results')renderResultsTbl();
+  if(id==='results'){renderResultsTbl();populateSemFilters();}
   if(id==='predict')populatePredictPicker();
 }
 
@@ -1352,6 +1379,13 @@ function saveCourse(){
   saveState();closeCourseModal();renderCoursesTbl();populateSemFilters();
   if(savedCourse) saveCourseToCloud(savedCourse);
 }
+function navigateToMarks(courseId){
+  go('marks');
+  setTimeout(()=>{
+    const picker=document.getElementById('marksCoursePick');
+    if(picker){picker.value=courseId;loadMarksForm();}
+  },150);
+}
 function deleteCourse(id){
   const c=ST.courses.find(x=>x.id===id);
   openConfirm('Delete Course',`Delete "${c?.title}" and all its marks?`,()=>{
@@ -1382,7 +1416,7 @@ function renderCoursesTbl(){
     const m=ST.marks[c.id],ca=calcCourse(m);
     const hasMks=m&&hasMark(m);
     const statusBadge=hasMks?`<span class="${gbClass(ca?.grade||'F')}" style="font-size:11px;">${ca?.grade}</span>`:`<span style="font-size:11px;color:var(--tm);">Pending</span>`;
-    const typeBadge=c.courseType==='split'?`<span style="font-size:10.5px;background:var(--warn-bg);color:var(--warn);padding:2px 7px;border-radius:10px;">Split</span>`:`<span style="font-size:10.5px;background:var(--ok-bg);color:var(--ok);padding:2px 7px;border-radius:10px;">Full</span>`;
+    const typeBadge=c.courseType==='split'?'<span class="gb gC" style="font-size:10.5px;">Split</span>':'<span class="gb gB" style="font-size:10.5px;">Full</span>';
     const teachers=c.courseType==='split'
       ?[c.teacherA,c.teacherB].filter(Boolean).join(' / ')||'—'
       :(c.teachers||[]).join(', ')||'—';
@@ -1395,7 +1429,7 @@ function renderCoursesTbl(){
       <td>${typeBadge}</td>
       <td>${statusBadge}</td>
       <td><div style="display:flex;gap:5px;">
-        <button class="btn btn-outline btn-sm" onclick="go('marks');setTimeout(()=>{document.getElementById('marksCoursePick').value='${c.id}';loadMarksForm()},120);">Marks</button>
+        <button class="btn btn-outline btn-sm" onclick="navigateToMarks('${c.id}')">Marks</button>
         <button class="btn btn-outline btn-sm" onclick="openEditCourseModal('${c.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteCourse('${c.id}')">Del</button>
       </div></td>
@@ -1518,7 +1552,7 @@ function loadMarksForm(){
         <div class="fg"><label class="fl">Presentation</label><input type="text" class="fc" id="m_pres" value="${m.presentation??''}" placeholder="e.g. Pending"></div>
         <div class="fg"><label class="fl">Viva</label><input type="text" class="fc" id="m_viva" value="${m.viva??''}" placeholder="e.g. 9/10"></div>
       </div>
-      <div class="fg"><label class="fl">Notes</label><textarea class="fc" id="m_notes" rows="2" placeholder="Any notes…">${m.notes??''}</textarea></div>
+      <div class="fg"><label class="fl">Notes</label><textarea class="fc" id="m_notes" rows="2" placeholder="Any notes...">${m.notes??''}</textarea></div>
     </div>
 
     <div style="display:flex;gap:9px;justify-content:flex-end;">
@@ -1565,16 +1599,17 @@ function liveCalc(id){
   if(iCV)iCV.textContent=inC.toFixed(1)+' / 40';
 
   // Score ring
-  const sn=document.getElementById('scoreNum');if(sn)sn.textContent=total.toFixed(1);
+  const sn=document.getElementById('scoreNum');if(sn){sn.textContent=total.toFixed(1);const sr=document.getElementById('scoreRing');if(sr){sr.style.borderColor=total>=75?'var(--ok)':total>=50?'var(--gold)':'var(--err)';sr.style.background=total>=75?'var(--ok-bg)':total>=50?'var(--gold-pale)':'var(--err-bg)';}}
 
   // Grade output
   const go=document.getElementById('gradeOut');
   const gp=document.getElementById('gpill');
   const td=document.getElementById('totalDisp');
   const gd=document.getElementById('gpaDisp');
-  if(go&&(fin>0||(inC>0&&document.getElementById('m_final')?.value!==''&&document.getElementById('m_final')?.value!==null))){
+  const finalVal=document.getElementById('m_final')?.value;
+  if(go&&(fin>0||(inC>0&&finalVal!==''&&finalVal!==undefined))){
     go.style.display='';
-    if(gp){gp.className=gbClass(gi.g)+' gb';gp.textContent=gi.g}
+    if(gp){gp.className=gbClass(gi.g);gp.textContent=gi.g}
     if(td)td.textContent=total.toFixed(1)+' / 100';
     if(gd)gd.textContent=`Grade: ${gi.g} · GPA: ${gi.gpa.toFixed(2)} · In-Course: ${inC.toFixed(1)}/40 · Final: ${fin}/60`;
   }
@@ -1997,14 +2032,17 @@ function populateSemFilters(){
   });
 }
 function sortTbl(t,k){const sc=ST.sortCfg[t];if(sc.k===k)sc.d*=-1;else{sc.k=k;sc.d=1};if(t==='courses')renderCoursesTbl();else renderResultsTbl()}
+let _pagCbs={};
 function renderPag(cid,cur,tot,onClick){
-  const cont=document.getElementById(cid);if(tot<=1){cont.innerHTML='';return}
-  let h=`<button class="pbtn" onclick="(${onClick.toString()})(${cur-1})" ${cur===1?'disabled':''}>‹</button>`;
+  const cont=document.getElementById(cid);if(!cont)return;
+  if(tot<=1){cont.innerHTML='';return}
+  _pagCbs[cid]=onClick;
+  let h=`<button class="pbtn" onclick="_pagCbs['${cid}'](${cur-1})" ${cur===1?'disabled':''}>‹</button>`;
   for(let i=1;i<=tot;i++){
-    if(i===1||i===tot||(i>=cur-1&&i<=cur+1))h+=`<button class="pbtn ${i===cur?'active':''}" onclick="(${onClick.toString()})(${i})">${i}</button>`;
+    if(i===1||i===tot||(i>=cur-1&&i<=cur+1))h+=`<button class="pbtn ${i===cur?'active':''}" onclick="_pagCbs['${cid}'](${i})">${i}</button>`;
     else if(i===cur-2||i===cur+2)h+=`<span style="padding:0 3px;color:var(--tm);">…</span>`;
   }
-  h+=`<button class="pbtn" onclick="(${onClick.toString()})(${cur+1})" ${cur===tot?'disabled':''}>›</button>`;
+  h+=`<button class="pbtn" onclick="_pagCbs['${cid}'](${cur+1})" ${cur===tot?'disabled':''}>›</button>`;
   cont.innerHTML=h;
 }
 
@@ -2038,10 +2076,10 @@ function showToast(msg,type='inf'){
 function seedData(){
   if(ST.courses.length>0)return;
   ST.courses=[
-    {id:'c001',code:'Econ 5121',title:'Principles of Economics',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Dr. Nishad Nasrin'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c002',code:'AT 5179',title:'Agricultural Policy and Rural Development',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Tasnim Murad Mamun','Md. Torikul Islam'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c003',code:'Demo 5177',title:'Population Policy and Gender Studies',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Kaniz Fatima Mohsin','Md. Mehedi Hasan'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()},
-    {id:'c004',code:'DS 5171',title:'Development Theories and Policies',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Faijan Bin Halim'],teacherA:'',teacherB:'',createdAt:new Date().toISOString()}
+    {id:'c001',code:'Econ 5121',title:'Principles of Economics',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Dr. Nishad Nasrin'],teacherA:'',teacherB:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()},
+    {id:'c002',code:'AT 5179',title:'Agricultural Policy and Rural Development',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Tasnim Murad Mamun','Md. Torikul Islam'],teacherA:'',teacherB:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()},
+    {id:'c003',code:'Demo 5177',title:'Population Policy and Gender Studies',credit:3,semester:'Year 1 — Semester 1',status:'Optional',courseType:'full',teachers:['Kaniz Fatima Mohsin','Md. Mehedi Hasan'],teacherA:'',teacherB:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()},
+    {id:'c004',code:'DS 5171',title:'Development Theories and Policies',credit:3,semester:'Year 1 — Semester 1',status:'Core',courseType:'full',teachers:['Faijan Bin Halim'],teacherA:'',teacherB:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}
   ];
   ST.marks={};saveState();
 }
